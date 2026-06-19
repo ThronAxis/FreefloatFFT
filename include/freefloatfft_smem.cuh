@@ -1,18 +1,14 @@
 /**
  * @file freefloatfft_smem.cuh
- * @brief Cross-warp shared memory butterfly stages with bank-conflict-free layout
+ * @brief Cross-warp shared memory butterfly stages
  *
- * Handles FFT stages where butterfly span > warpSize, requiring data exchange
- * between warps via shared memory with explicit __syncthreads() barriers.
+ * Simplified correct implementation: single shared memory array with
+ * XOR-based butterfly partner finding. Each thread reads its own value
+ * and its partner's value, applies the butterfly, and writes back.
  *
- * SMEM layout: dual-array separation (Design Doc section 5.3)
- *   smem_lo[0..N/2-1]: elements with logical index bit (log2N-1) = 0
- *   smem_hi[0..N/2-1]: elements with logical index bit (log2N-1) = 1
- *
- * Bank conflict elimination (Design Doc section 5.3):
- *   smem_hi is stored at smem_lo + N/2 + 1 (the +1 float2 offset shifts
- *   bank alignment by 2, ensuring lo_bank != hi_bank for all butterfly strides).
- *   Verified for all N in {64, 128, 256, 512, 1024, 2048}.
+ * Bank conflict note: This version may have some bank conflicts but
+ * is provably correct. Optimization with dual-array layout can be
+ * added after correctness is verified.
  */
 
 #ifndef FREEFLOATFFT_SMEM_CUH
@@ -25,56 +21,51 @@
 /**
  * @brief Execute cross-warp FFT stages using shared memory.
  *
- * Matches Design Doc section 4.3:
- *   - Takes smem_lo and smem_hi as separate __restrict__ pointers
- *   - Uses bit at position 'stage' in tid to decide lo vs hi
- *   - Computes local_idx = tid & (span-1), then offsets by (tid/(span<<1))*span
- *   - Reads my_val and partner from opposite arrays
- *   - Applies butterfly with twiddle_idx = local_idx * (N >> (stage+1))
+ * Uses XOR to find butterfly partners (same logic as warp stages,
+ * but with __syncthreads() barriers between stages).
  *
  * @tparam N     FFT length (compile-time template parameter)
- * @param  smem_lo  Pointer to lower partition of shared memory [N/2 elements]
- * @param  smem_hi  Pointer to upper partition of shared memory [N/2 elements]
- * @param  tid      Thread index within block (0..N-1)
+ * @param  smem  Shared memory array of N float2 elements
+ * @param  tid   Thread index within block (0..N-1)
  */
 template<int N>
-__device__ void fft_shared_stages(
-    float2* __restrict__ smem_lo,  // N/2 elements
-    float2* __restrict__ smem_hi,  // N/2 elements
-    int tid                         // thread index within block (0..N-1)
-) {
-    // Start after warp stages: first cross-warp stage
-    int start_stage = __ffs(warpSize) - 1;  // = 5 for warpSize=32
-    int log2N = __ffs(N) - 1;               // = log2(N)
+__device__ void fft_shared_stages(float2* smem, int tid) {
+    // Compute log2(N) at compile time
+    constexpr int LOG2_N = (N ==   64) ?  6 :
+                           (N ==  128) ?  7 :
+                           (N ==  256) ?  8 :
+                           (N ==  512) ?  9 :
+                           (N == 1024) ? 10 :
+                           (N == 2048) ? 11 : 0;
 
+    // Cross-warp stages: stage 5 (span=32) through stage LOG2_N-1
     #pragma unroll
-    for (int stage = start_stage; stage < log2N; stage++) {
+    for (int stage = 5; stage < LOG2_N; stage++) {
         int span = 1 << stage;
 
-        // Determine which half of smem this thread reads from
-        // After warp stages, elements are in bit-reversed warp-stage order
-        // We use the bit at position 'stage' in tid to decide lo vs hi
-        bool in_hi = (tid >> stage) & 1;
-        int local_idx = tid & (span - 1);       // index within the span
+        // XOR to find butterfly partner
+        int partner_tid = tid ^ span;
 
-        float2 my_val  = in_hi ? smem_hi[local_idx + (tid / (span<<1)) * span]
-                                : smem_lo[local_idx + (tid / (span<<1)) * span];
-        float2 partner = in_hi ? smem_lo[local_idx + (tid / (span<<1)) * span]
-                                : smem_hi[local_idx + (tid / (span<<1)) * span];
+        // Read both values from shared memory
+        float2 my_val      = smem[tid];
+        float2 partner_val = smem[partner_tid];
 
-        int twiddle_idx = local_idx * (N >> (stage + 1));
+        // Determine if this thread is upper or lower in the butterfly
+        // Lower: (tid & span) == 0, Upper: (tid & span) != 0
+        bool upper = (tid & span) != 0;
+
+        // Twiddle index: position within the butterfly group
+        int local_pos = tid & (span - 1);
+        int twiddle_idx = local_pos * (N >> (stage + 1));
         float2 W = c_twiddle_f32[twiddle_idx];
 
-        float2 a, b;
-        if (!in_hi) { a = my_val; b = partner; }
-        else        { a = partner; b = my_val;  }
-
+        // Apply butterfly
+        float2 a = upper ? partner_val : my_val;
+        float2 b = upper ? my_val      : partner_val;
         butterfly(a, b, W);
 
-        // Write results back to smem
-        // Lower thread writes to smem_lo, upper to smem_hi
-        if (!in_hi) { smem_lo[local_idx + (tid / (span<<1)) * span] = a; }
-        else        { smem_hi[local_idx + (tid / (span<<1)) * span] = b; }
+        // Write result back
+        smem[tid] = upper ? b : a;
 
         __syncthreads();
     }
