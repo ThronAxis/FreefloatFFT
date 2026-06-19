@@ -53,7 +53,6 @@ float2 fft_warp_stages(float2 val, int lane, int N_full) {
     for (int stage = 0; (1 << stage) < N_WARP; stage++) {
         int span = 1 << stage;                    // butterfly span
         int group_size = span << 1;               // 2 x span
-        int group = lane / group_size;            // which butterfly group
         int pos   = lane % group_size;            // position within group
         bool upper = pos >= span;                  // upper or lower branch
 

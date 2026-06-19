@@ -21,6 +21,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <cmath>
+#include <new>
 #include <cuda_runtime.h>
 
 // Include all kernel headers (header-only library)

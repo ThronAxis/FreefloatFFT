@@ -21,12 +21,10 @@
 #include <cstring>
 #include <cuda_runtime.h>
 
-#include "../include/freefloatfft.h"
-#include "../include/freefloatfft_math.cuh"
-#include "../include/freefloatfft_constants.cuh"
-#include "../include/freefloatfft_warp.cuh"
-#include "../include/freefloatfft_smem.cuh"
-#include "../include/freefloatfft_kernel.cuh"
+// Include the main source file directly — this makes the test binary
+// self-contained (no separate linking needed). The source file includes
+// all headers and provides plan_create/execute/destroy implementations.
+#include "../src/freefloatfft.cu"
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846

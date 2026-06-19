@@ -19,12 +19,8 @@
 #include <cstring>
 #include <cuda_runtime.h>
 
-#include "../include/freefloatfft.h"
-#include "../include/freefloatfft_math.cuh"
-#include "../include/freefloatfft_constants.cuh"
-#include "../include/freefloatfft_warp.cuh"
-#include "../include/freefloatfft_smem.cuh"
-#include "../include/freefloatfft_kernel.cuh"
+// Include the main source file directly — self-contained binary
+#include "../src/freefloatfft.cu"
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Random Complex Signal Generator
