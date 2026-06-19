@@ -35,11 +35,15 @@ echo "  Detected GPU architecture: $ARCH"
 
 # ── Step 2: Detect source directory ────────────────────────────────────────
 
-# Try common locations
+# Try common locations (case-sensitive filesystem)
 if [ -d "/kaggle/working/freefloatfft" ]; then
     SRC_DIR="/kaggle/working/freefloatfft"
+elif [ -d "/kaggle/working/FreefloatFFT" ]; then
+    SRC_DIR="/kaggle/working/FreefloatFFT"
 elif [ -d "/kaggle/input/freefloatfft" ]; then
     SRC_DIR="/kaggle/input/freefloatfft"
+elif [ -d "/kaggle/input/FreefloatFFT" ]; then
+    SRC_DIR="/kaggle/input/FreefloatFFT"
 else
     SRC_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 fi
