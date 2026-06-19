@@ -56,7 +56,7 @@ __constant__ uint16_t c_bitrev[2048];
  * @param[in]  dir      -1 for forward, +1 for inverse
  */
 inline void precompute_twiddles_f32(float2* h_out, int N, int dir) {
-    const double theta = dir * (-2.0 * M_PI) / N;
+    const double theta = dir * (2.0 * M_PI) / N;
     const double c_delta = cos(theta);
     const double s_delta = sin(theta);
 
